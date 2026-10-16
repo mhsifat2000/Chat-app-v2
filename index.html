@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>FlashChat - Serverless P2P</title>
+  <meta name="description" content="Ultra-fast serverless peer-to-peer chat running purely in the browser with IndexedDB local storage and GitHub Pages compatibility.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container" id="app">
+    <!-- Sidebar: Conversations / Peers -->
+    <aside class="sidebar" id="sidebar">
+      <header class="sidebar-header">
+        <div class="user-profile">
+          <div class="avatar" id="myAvatar">Me</div>
+          <div class="user-meta">
+            <h2 class="user-name" id="myUsername">My Profile</h2>
+            <span class="user-badge" id="onlineBadge">P2P Enabled</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button class="btn-icon" id="newChatBtn" title="Connect New Person" aria-label="Connect New Person">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="search-box">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" id="searchInput" placeholder="Search conversations..." autocomplete="off">
+      </div>
+
+      <!-- Conversations List -->
+      <nav class="conversations-list" id="conversationsList" aria-label="Chats">
+        <!-- Rendered dynamically -->
+      </nav>
+
+      <footer class="sidebar-footer">
+        <div class="storage-info">
+          <span class="storage-indicator"></span>
+          <span id="storageStatusText">IndexedDB active • Zero server</span>
+        </div>
+      </footer>
+    </aside>
+
+    <!-- Main Chat Window -->
+    <main class="chat-window" id="chatWindow">
+      <!-- Chat Header -->
+      <header class="chat-header" id="chatHeader">
+        <button class="btn-icon mobile-back-btn" id="mobileBackBtn" aria-label="Back to conversations">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <div class="active-avatar" id="activeAvatar">?</div>
+        <div class="chat-meta">
+          <h1 class="chat-title" id="activeChatTitle">Select a conversation</h1>
+          <p class="chat-subtitle" id="activeChatSubtitle">Direct peer-to-peer • Local storage</p>
+        </div>
+        <div class="chat-actions">
+          <button class="btn-connect-p2p" id="connectPeerBtn" title="Connect Directly via QR or Code">
+            <span class="status-dot" id="headerStatusDot"></span>
+            <span id="headerStatusText">Connect P2P</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Message Area -->
+      <section class="messages-viewport" id="messagesViewport">
+        <!-- Top loading sentinel for scroll-up pagination (load 50 older messages) -->
+        <div class="scroll-sentinel" id="topSentinel">
+          <span class="loading-spinner hidden" id="topSpinner"></span>
+          <span class="loading-label" id="topLoadingLabel">Scroll up for older messages</span>
+        </div>
+
+        <div class="messages-container" id="messagesContainer">
+          <!-- Messages will be appended one-by-one here -->
+        </div>
+
+        <!-- Scroll down anchor button if user scrolled up -->
+        <button class="btn-scroll-bottom hidden" id="scrollBottomBtn" aria-label="Scroll to bottom">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+      </section>
+
+      <!-- Chat Input Area -->
+      <footer class="chat-composer" id="chatComposer">
+        <div class="composer-toolbar">
+          <button class="btn-icon" id="attachBtn" title="Send Image (Auto-compressed)" aria-label="Send Image">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.5-8.48a4 4 0 0 1 5.66 5.66l-8.5 8.5a2 2 0 0 1-2.83-2.83l7.78-7.78"/></svg>
+          </button>
+          <input type="file" id="imageInput" accept="image/*" style="display: none;">
+        </div>
+
+        <form class="composer-form" id="composerForm" onsubmit="return false;">
+          <textarea 
+            id="messageInput" 
+            class="composer-input" 
+            placeholder="Type a message..." 
+            rows="1" 
+            maxlength="4000"
+            autocomplete="off"></textarea>
+          <button type="submit" class="btn-send" id="sendBtn" aria-label="Send message">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+          </button>
+        </form>
+      </footer>
+    </main>
+  </div>
+
+  <!-- Modal for Stage 2 P2P QR & Code Pairing -->
+  <div class="modal-backdrop hidden" id="connectModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modalTitle">Connect to Another Person</h3>
+        <button class="btn-icon" id="closeModalBtn" aria-label="Close modal">&times;</button>
+      </div>
+
+      <div class="modal-tabs">
+        <button class="modal-tab active" id="tabShowQr">1. My Invite QR</button>
+        <button class="modal-tab" id="tabScanQr">2. Scan Friend's QR</button>
+        <button class="modal-tab" id="tabCode">Text Code</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Easy Connect 1-Click Link Card -->
+        <div class="easy-connect-card" id="easyConnectCard">
+          <div class="easy-connect-title">
+            <span>⚡ Easiest Way to Connect (1-Click Link)</span>
+          </div>
+          <p class="modal-desc" style="margin-bottom: 2px;">Send your friend this instant link (via WhatsApp, SMS, or Telegram):</p>
+          <div class="easy-connect-actions">
+            <button class="btn-instant-link" id="copyConnectLinkBtn">
+              🔗 Copy Direct Connect Link
+            </button>
+            <button class="btn btn-secondary btn-sm" id="shareConnectLinkBtn">
+              📤 Share Link
+            </button>
+          </div>
+          <button class="btn-paste-clipboard" id="pasteFromClipboardBtn">
+            📋 1-Tap Paste Answer from Clipboard & Connect
+          </button>
+          <span class="copy-success-hint hidden" id="linkCopiedToast" style="text-align: center;">Link copied to clipboard!</span>
+        </div>
+
+        <!-- Tab 1: Show My QR (Person A) -->
+        <div class="tab-pane active" id="paneShowQr">
+          <p class="modal-desc">Share this direct link or ask your friend to scan the QR code:</p>
+          <div class="direct-link-box">
+            <input type="text" id="directConnectUrlInput" readonly placeholder="Generating invite link...">
+            <button class="btn btn-primary btn-sm" id="copyOfferBtn">Copy Link</button>
+          </div>
+          <span class="copy-success-hint hidden" id="copyOfferSuccess" style="text-align: center;">Link copied to clipboard!</span>
+
+          <div class="qr-wrapper" id="qrContainer" style="margin-top: 10px;">
+            <span class="loading-label">Generating invite code...</span>
+          </div>
+
+          <div class="answer-paste-box">
+            <label class="input-label">Friend's Answer Link or Code:</label>
+            <div class="input-row">
+              <input type="text" id="answerInput" placeholder="Paste link or code from friend here...">
+              <button class="btn btn-primary btn-sm" id="applyAnswerBtn">Connect</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Scan Friend's QR (Person B) -->
+        <div class="tab-pane hidden" id="paneScanQr">
+          <p class="modal-desc">Point your camera at your friend's Invite or Answer QR code:</p>
+          <div class="scanner-viewport" id="scannerViewport">
+            <div id="scannerTarget" class="scanner-container">
+              <video id="scannerVideo" autoplay playsinline muted></video>
+            </div>
+          </div>
+          <p class="scanner-status" id="scannerStatus">Starting camera...</p>
+          
+          <!-- Camera Denied / Restricted Fallback -->
+          <div class="camera-fallback-card hidden" id="cameraFallbackCard">
+            <p class="fallback-warning">⚠️ Camera access unavailable or denied.</p>
+            <div class="fallback-actions">
+              <label class="btn btn-secondary btn-sm file-upload-btn">
+                🖼️ Upload QR Screenshot
+                <input type="file" id="qrFileInput" accept="image/*" style="display: none;">
+              </label>
+              <button class="btn btn-primary btn-sm" id="fallbackToCodeBtn">Switch to Text Code</button>
+            </div>
+          </div>
+
+          <div class="or-upload-row" id="orUploadRow">
+            <label class="upload-link-btn">
+              📷 Or scan from a QR image / screenshot
+              <input type="file" id="qrFileInputAlt" accept="image/*" style="display: none;">
+            </label>
+          </div>
+        </div>
+
+        <!-- Tab 3: Text Code (Manual Fallback) -->
+        <div class="tab-pane hidden" id="paneCode">
+          <p class="modal-desc">If camera is unavailable, exchange codes via SMS/WhatsApp:</p>
+          <div class="code-flow-step">
+            <strong>Step 1:</strong> Send your Invite Code to your friend.
+            <textarea id="manualOfferText" class="code-textarea" readonly rows="3" placeholder="Generating..."></textarea>
+          </div>
+          <div class="code-flow-step">
+            <strong>Step 2:</strong> Paste friend's Answer Code below:
+            <textarea id="manualAnswerText" class="code-textarea" rows="3" placeholder="Paste answer code from friend here..."></textarea>
+            <button class="btn btn-primary" id="manualConnectBtn" style="margin-top: 8px;">Finalize Connection</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="db.js"></script>
+  <script src="p2p.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
